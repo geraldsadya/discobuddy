@@ -1,9 +1,30 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server'
+
+export interface ChatRequest {
+  message: string
+  lang?: string
+  sessionId?: string
+  meta?: { channel?: string }
+}
+
+export interface ChatResponse {
+  text: string
+  refused: boolean
+}
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  // You can use body.messages if needed
+  const body: ChatRequest = await request.json()
+  const { message } = body
+
+  if (!message || typeof message !== 'string') {
+    return NextResponse.json(
+      { error: 'Message is required and must be a string' },
+      { status: 400 }
+    )
+  }
+
   return NextResponse.json({
-    response: "This is a mock AI response. Replace with your model integration.",
-  });
+    text: 'This is a placeholder response.',
+    refused: false
+  })
 }
