@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { detectLanguage, translate } from '@/lib/translate'
 
 export interface ChatRequest {
   message: string
@@ -10,11 +11,12 @@ export interface ChatRequest {
 export interface ChatResponse {
   text: string
   refused: boolean
+  lang?: string
 }
 
 export async function POST(request: Request) {
   const body: ChatRequest = await request.json()
-  const { message } = body
+  const { message, lang = 'auto' } = body
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json(
@@ -23,8 +25,12 @@ export async function POST(request: Request) {
     )
   }
 
+  const detectedLanguage = lang === 'auto' ? await detectLanguage(message) : lang
+  const enText = detectedLanguage !== 'en' ? await translate(message, detectedLanguage, 'en') : message
+
   return NextResponse.json({
-    text: 'This is a placeholder response.',
-    refused: false
+    text: `Translated input: ${enText}`,
+    refused: false,
+    lang: detectedLanguage
   })
 }
