@@ -1,246 +1,90 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { detectLanguage, translate } from '@/lib/translate'
-import { classifyIntent, isOutOfScope, isUnsafe, getClarifierQuestion } from '@/lib/guardrails'
-import { searchKb, fallbackSearch, isSearchQualityGood } from '@/lib/search'
-import { buildMessages, buildRefusalMessage, buildClarifierMessage, buildErrorMessage, formatCitations } from '@/lib/prompt'
-import { chatCompletion } from '@/lib/azureOpenAI'
-import { logTelemetry, createTelemetryEvent } from '@/lib/telemetry'
+import { NextResponse } from 'next/server';
+import { searchKb } from '@/lib/search';
+import { getUserProfile, getProfileContextForQuestion } from '@/lib/user-profile';
+import { chatCompletion, ChatMessage } from '@/lib/azureOpenAI';
+import { isOutOfScope } from '@/lib/guardrails';
+import { logTelemetry } from '@/lib/telemetry';
 
-export interface ChatRequest {
-  message: string
-  lang?: string
-  sessionId?: string
-  meta?: { channel?: string }
-}
-
-export interface ChatResponse {
-  text: string
-  citations?: Array<{ doc: string; score: number }>
-  refused: boolean
-  intent?: { label: string; confidence: number }
-  sessionId?: string
-}
-
-export async function POST(request: NextRequest) {
-  const startTime = Date.now()
+export async function POST(req: Request) {
+  const startTime = Date.now();
   
   try {
-    const body: ChatRequest = await request.json()
-    const { message, lang = 'auto', sessionId, meta } = body
+    const { messages } = await req.json();
+    const userMessage = messages[messages.length - 1].content;
 
-    if (!message || typeof message !== 'string') {
-      return NextResponse.json(
-        { error: 'Message is required and must be a string' },
-        { status: 400 }
-      )
-    }
-
-    // A) Language detection and translation
-    const detectedLanguage = lang === 'auto' ? await detectLanguage(message) : lang
-    const enText = detectedLanguage !== 'en' ? await translate(message, detectedLanguage, 'en') : message
-
-    // B) Intent classification and guardrails
-    const intent = classifyIntent(enText)
-    
-    // Only refuse if clearly out of scope
-    if (intent.label === 'out') {
-      const telemetryEvent = createTelemetryEvent(
-        sessionId,
-        message,
-        detectedLanguage,
-        intent,
-        true,
-        [],
-        0,
-        { totalHits: 0, topScore: 0, hasGoodQuality: false },
-        Date.now() - startTime,
-        'Out of scope',
-        meta?.channel
-      )
-      logTelemetry(telemetryEvent)
-      
+    // Check if question is within Discovery scope
+    if (isOutOfScope(userMessage)) {
       return NextResponse.json({
-        text: buildRefusalMessage(),
-        refused: true,
-        intent
-      })
+        response: "I can only help with Discovery-related questions. Please ask about Discovery's products, services, or benefits.",
+        refused: true
+      });
     }
 
-    // For ambiguous queries, ask for clarification
-    if (intent.label === 'ambiguous') {
-      const telemetryEvent = createTelemetryEvent(
-        sessionId,
-        message,
-        detectedLanguage,
-        intent,
-        true,
-        [],
-        0,
-        { totalHits: 0, topScore: 0, hasGoodQuality: false },
-        Date.now() - startTime,
-        'Ambiguous intent',
-        meta?.channel
-      )
-      logTelemetry(telemetryEvent)
-      
-      return NextResponse.json({
-        text: buildClarifierMessage(),
-        refused: true,
-        intent
-      })
-    }
+    // Get user profile and relevant context
+    const profile = await getUserProfile('gerald'); // In production, get from auth
+    const profileContext = getProfileContextForQuestion(profile, userMessage);
 
-    // C) Search the knowledge base
-    let searchResults = await searchKb(enText, 3)
-    
-    // DEBUG: Log search results
-    console.log('🔍 SEARCH DEBUG:', {
-      query: enText,
-      totalHits: searchResults.totalCount,
-      hits: searchResults.hits.map(h => ({ filename: h.filename, score: h.score, contentLength: h.content.length })),
-      hasGoodQuality: isSearchQualityGood(searchResults.hits)
-    })
-    
-    // Try fallback search if vector search returns no hits
-    if (searchResults.hits.length === 0) {
-      console.log('🔄 No vector hits, trying fallback search...')
-      searchResults = await fallbackSearch(enText, 3)
-    }
+    // Search knowledge base
+    const searchResults = await searchKb(userMessage);
+    const kbContext = searchResults.hits.map(hit => hit.content).join('\n\n');
 
-    // If still no hits, give a softer response for in-scope queries
-    if (searchResults.hits.length === 0) {
-      const telemetryEvent = createTelemetryEvent(
-        sessionId,
-        message,
-        detectedLanguage,
-        intent,
-        false, // Not refused, just no results
-        [],
-        0,
-        { 
-          totalHits: searchResults.totalCount, 
-          topScore: 0, 
-          hasGoodQuality: false 
-        },
-        Date.now() - startTime,
-        'No search results found',
-        meta?.channel
-      )
-      logTelemetry(telemetryEvent)
-      
-      // Different message based on intent
-      const responseText = intent.label === 'in'
-        ? "I understand you're asking about Discovery services. While I don't have specific information about that, I can help with questions about Vitality benefits, KeyCare plans, or medical scheme coverage. Could you try asking about one of these topics?"
-        : buildRefusalMessage()
+    // Build system prompt
+    const systemPrompt = `You are DiscoBuddy, Discovery's AI assistant.
 
-      return NextResponse.json({
-        text: responseText,
-        refused: false, // Not refused if intent is 'in'
-        intent
-      })
-    }
+Use only Discovery knowledge provided in "KB Context" to answer.
+If—and only if—the user's question naturally relates to a benefit that this user can activate or improve (based on the "User Context"), add a short "Personalised tip" after the answer.
 
-    // D) Build messages for Azure OpenAI
-    const messages = buildMessages(searchResults.hits, enText)
+Rules:
+- First: answer factually from the KB.
+- Personalise only when it clearly helps with THIS topic (e.g., groceries ↔ HealthyFood; gyms ↔ Vitality Gym).
+- Use profile numbers for estimates (preface with "about" or "up to").
+- Do NOT invent Discovery policies or student discounts.
+- If required details are missing (KB facts or profile data), skip the tip.
+- If the KB doesn't mention a fact, do not infer it.
 
-    // E) Call Azure OpenAI
-    const completion = await chatCompletion(messages, false, 0.2)
-    let finalText = completion.text
+User Context (summarised): ${profileContext}
 
-    // F) Translate back to original language if needed
-    if (detectedLanguage !== 'en') {
-      try {
-        finalText = await translate(completion.text, 'en', detectedLanguage)
-      } catch (translateError) {
-        console.error('Answer translation error:', translateError)
-        // Keep English answer if translation fails
-      }
-    }
+You will receive "KB Context" in the user message.`;
 
-    // G) Log telemetry
-    const telemetryEvent = createTelemetryEvent(
-      sessionId,
-      message,
-      detectedLanguage,
-      intent,
-      false,
-      searchResults.hits.map(hit => hit.filename),
-      finalText.length,
-      {
-        totalHits: searchResults.totalCount,
-        topScore: searchResults.hits[0]?.score || 0,
-        hasGoodQuality: true
-      },
-      Date.now() - startTime,
-      undefined,
-      meta?.channel
-    )
-    logTelemetry(telemetryEvent)
+    // Format user message with KB context
+    const formattedUserMessage = `Question: ${userMessage}
 
-    // H) Return response
+KB Context:
+${kbContext}`;
+
+    // Create messages array with just system prompt and current user message
+    const chatMessages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: formattedUserMessage }
+    ];
+
+    // Generate response
+    const completion = await chatCompletion(chatMessages);
+
+    // Log telemetry
+    logTelemetry({
+      timestamp: new Date().toISOString(),
+      sessionId: 'demo', // In production, use real session ID
+      question: userMessage,
+      kb_confidence: searchResults.hits[0]?.score || 0,
+      tip_appended: completion.text.includes('Personalised tip:'),
+      response_time_ms: Date.now() - startTime,
+      profile_context_used: profileContext
+    });
+
     return NextResponse.json({
-      text: finalText,
-      citations: formatCitations(searchResults.hits),
-      refused: false,
-      intent,
-      sessionId
-    })
+      response: completion.text,
+      citations: searchResults.hits.map(hit => ({
+        filename: hit.filename,
+        score: hit.score
+      }))
+    });
 
   } catch (error) {
-    console.error('Chat API error:', error)
-    
-    const telemetryEvent = createTelemetryEvent(
-      undefined,
-      'Error occurred',
-      'en',
-      { label: 'error', confidence: 0 },
-      true,
-      [],
-      0,
-      { totalHits: 0, topScore: 0, hasGoodQuality: false },
-      Date.now() - startTime,
-      error instanceof Error ? error.message : 'Unknown error'
-    )
-    logTelemetry(telemetryEvent)
-    
+    console.error('Chat API error:', error);
     return NextResponse.json(
-      { 
-        text: buildErrorMessage(),
-        refused: true,
-        error: 'Internal server error'
-      },
+      { error: 'Failed to process chat request' },
       { status: 500 }
-    )
-  }
-}
-
-// Handle streaming requests
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const message = searchParams.get('message')
-  const sessionId = searchParams.get('sessionId')
-  const lang = searchParams.get('lang') || 'auto'
-
-  if (!message) {
-    return NextResponse.json(
-      { error: 'Message parameter is required' },
-      { status: 400 }
-    )
-  }
-
-  // For streaming, we'll use the same logic but return a stream
-  // This is a simplified version - you might want to implement proper streaming
-  try {
-    const response = await POST(new NextRequest(request.url, {
-      method: 'POST',
-      body: JSON.stringify({ message, sessionId, lang })
-    }))
-    
-    return response
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Streaming not implemented yet' },
-      { status: 501 }
-    )
+    );
   }
 } 

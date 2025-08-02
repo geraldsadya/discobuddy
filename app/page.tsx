@@ -27,17 +27,7 @@ const COLORS = [
   { glow: "rgba(99, 102, 241, 0.6)", text: "rgb(99, 102, 241)" },
 ]
 
-const SAMPLE_CHAT_HISTORY: ChatHistoryItem[] = [
-  { id: 1, title: "Discovery plan comparison", time: "2 hours ago" },
-  { id: 2, title: "Rewards optimization tips", time: "Yesterday" },
-  { id: 3, title: "Health benefits overview", time: "2 days ago" },
-  { id: 4, title: "Policy renewal questions", time: "1 week ago" },
-  { id: 5, title: "Vitality program details", time: "1 week ago" },
-  { id: 6, title: "Medical aid claim process", time: "2 weeks ago" },
-  { id: 7, title: "Fitness tracker setup", time: "2 weeks ago" },
-  { id: 8, title: "Travel insurance coverage", time: "3 weeks ago" },
-  { id: 9, title: "Annual health assessment", time: "1 month ago" },
-]
+
 
 const EXAMPLE_QUESTIONS = [
   "Tell me about Discovery's KeyCare plans",
@@ -94,15 +84,13 @@ export default function DiscoBuddyLanding() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: question,
-          sessionId: `session-${Date.now()}`,
-          meta: { channel: 'web' }
+          messages: [{ role: 'user', content: question }]
         }),
       })
 
       if (!response.ok) throw new Error('Failed to get response')
       const data = await response.json()
-      return data.text || data.answer || "I'm sorry, I couldn't process that request."
+      return data.response || "I'm sorry, I couldn't process that request."
     } catch (error) {
       console.error('Error asking question:', error)
       return "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a moment."
@@ -222,21 +210,9 @@ export default function DiscoBuddyLanding() {
           </div>
 
           <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto light-blue-scrollbar">
-            {SAMPLE_CHAT_HISTORY.map((chat, index) => (
-              <div key={chat.id}>
-                <div className={`p-4 cursor-pointer transition-colors ${
-                  isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-blue-50'
-                }`}>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-light truncate ${darkModeClasses.text}`}>{chat.title}</p>
-                    <p className={`text-xs mt-1 ${darkModeClasses.textSecondary}`}>{chat.time}</p>
-                  </div>
-                </div>
-                {index < SAMPLE_CHAT_HISTORY.length - 1 && (
-                  <div className={`h-px mx-4 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-700/50'}`} />
-                )}
-              </div>
-            ))}
+            <div className={`p-4 ${darkModeClasses.text}`}>
+              Start a new conversation to see your chat history here.
+            </div>
           </div>
         </div>
       </div>
@@ -258,7 +234,11 @@ export default function DiscoBuddyLanding() {
               className="p-2 focus:outline-none"
               aria-label="Open sidebar"
             >
-              <img src="/discovery-logo-black.svg" alt="Discovery Logo" className="w-10 h-10" />
+              <img 
+                src={isDarkMode ? "/discovery-logo-white.svg" : "/discovery-logo-black.svg"} 
+                alt="Discovery Logo" 
+                className="w-10 h-10" 
+              />
             </button>
             <div className="flex items-center gap-1 cursor-pointer" onClick={resetChat}>
               <div className="flex items-center text-lg font-light tracking-wider">
@@ -321,7 +301,7 @@ export default function DiscoBuddyLanding() {
                     placeholder="What would you like to know?"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className={`w-full h-16 px-6 py-4 pr-16 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none transition-all duration-3000 ease-in-out font-light backdrop-blur-sm ${darkModeClasses.inputBg}`}
+                    className={`w-full h-20 px-6 py-4 pr-16 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none transition-all duration-3000 ease-in-out font-light backdrop-blur-sm ${darkModeClasses.inputBg}`}
                     style={{
                       boxShadow: `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`,
                       paddingTop: '1.5rem',
@@ -352,24 +332,24 @@ export default function DiscoBuddyLanding() {
                     </Button>
                   )}
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 justify-center">
-                {EXAMPLE_QUESTIONS.map((example) => (
-                  <Button
-                    key={example}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPrompt(example)}
-                    className={`rounded-full px-4 py-2 text-sm font-light transition-all duration-300 ${
-                      isDarkMode 
-                        ? 'text-gray-500 hover:text-white hover:bg-white/5 border border-white/10 hover:border-white/20' 
-                        : 'text-black hover:text-black hover:bg-blue-100 border border-blue-100 hover:border-blue-300'
-                    }`}
-                  >
-                    {example}
-                  </Button>
-                ))}
+                
+                <div className="flex flex-wrap gap-3 justify-center mt-4">
+                  {EXAMPLE_QUESTIONS.map((example) => (
+                    <Button
+                      key={example}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPrompt(example)}
+                      className={`rounded-full px-4 py-2 text-sm font-light transition-all duration-300 ${
+                        isDarkMode 
+                          ? 'text-gray-500 hover:text-white hover:bg-white/5 border border-white/10 hover:border-white/20' 
+                          : 'text-black hover:text-black hover:bg-blue-100 border border-blue-100 hover:border-blue-300'
+                      }`}
+                    >
+                      {example}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -421,7 +401,7 @@ export default function DiscoBuddyLanding() {
                     placeholder="Ask me anything"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className={`w-full h-16 px-16 py-4 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none font-light backdrop-blur-sm transition-all duration-3000 ease-in-out ${darkModeClasses.inputBg}`}
+                    className={`w-full h-20 px-16 py-4 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none font-light backdrop-blur-sm transition-all duration-3000 ease-in-out ${darkModeClasses.inputBg}`}
                     style={{
                       boxShadow: `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`,
                       paddingTop: '1.5rem',
@@ -479,8 +459,6 @@ export default function DiscoBuddyLanding() {
           </div>
         </footer>
       )}
-
-
     </div>
   )
 }
