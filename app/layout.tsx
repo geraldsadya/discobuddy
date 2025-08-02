@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'DiscoBuddy',
+  title: 'DiscoChat',
   description: 'Discovery Health AI Assistant - Your health and wellness companion',
-  generator: 'The Real Gerald)',
+  generator: 'The Real G(erald)',
 }
 
 export default function RootLayout({

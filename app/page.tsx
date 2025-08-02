@@ -1,22 +1,21 @@
-"use client";
+"use client"
 
-import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowUp, User, ArrowLeft, Mic, Paperclip, Moon } from "lucide-react";
+import { useState, useEffect, useRef } from "react"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { ArrowUp, User, ArrowLeft, Mic, Paperclip, Moon } from "lucide-react"
 //import { ChatTest } from "@/components/chat-test"
-
 interface Message {
-  id: number;
-  type: "user" | "ai";
-  content: string;
-  timestamp: Date;
+  id: number
+  type: "user" | "ai"
+  content: string
+  timestamp: Date
 }
 
 interface ChatHistoryItem {
-  id: number;
-  title: string;
-  time: string;
+  id: number
+  title: string
+  time: string
 }
 
 const COLORS = [
@@ -26,242 +25,462 @@ const COLORS = [
   { glow: "rgba(245, 158, 11, 0.6)", text: "rgb(245, 158, 11)" },
   { glow: "rgba(236, 72, 153, 0.6)", text: "rgb(236, 72, 153)" },
   { glow: "rgba(99, 102, 241, 0.6)", text: "rgb(99, 102, 241)" },
-];
+]
+
+const SAMPLE_CHAT_HISTORY: ChatHistoryItem[] = [
+  { id: 1, title: "Discovery plan comparison", time: "2 hours ago" },
+  { id: 2, title: "Rewards optimization tips", time: "Yesterday" },
+  { id: 3, title: "Health benefits overview", time: "2 days ago" },
+  { id: 4, title: "Policy renewal questions", time: "1 week ago" },
+  { id: 5, title: "Vitality program details", time: "1 week ago" },
+  { id: 6, title: "Medical aid claim process", time: "2 weeks ago" },
+  { id: 7, title: "Fitness tracker setup", time: "2 weeks ago" },
+  { id: 8, title: "Travel insurance coverage", time: "3 weeks ago" },
+  { id: 9, title: "Annual health assessment", time: "1 month ago" },
+]
+
+const EXAMPLE_QUESTIONS = [
+  "Tell me about Discovery's KeyCare plans",
+  "How do I join Vitality?",
+  "What banking products does Discovery offer?",
+]
 
 export default function DiscoBuddyLanding() {
   // State
-  const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isDiscovering, setIsDiscovering] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [colorIndex, setColorIndex] = useState(0);
-  const [messageIdCounter, setMessageIdCounter] = useState(1);
-  const [inputHeight, setInputHeight] = useState(0);
+  const [prompt, setPrompt] = useState("")
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isDiscovering, setIsDiscovering] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [colorIndex, setColorIndex] = useState(0)
+  const [messageIdCounter, setMessageIdCounter] = useState(1)
+  const [inputHeight, setInputHeight] = useState(0)
 
   // Refs
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const inputRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
 
   // Color cycling effect
   useEffect(() => {
     const interval = setInterval(() => {
-      setColorIndex((prev) => (prev + 1) % COLORS.length);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+      setColorIndex((prev) => (prev + 1) % COLORS.length)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isDiscovering]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isDiscovering])
 
   // Focus textarea after AI response
   useEffect(() => {
     if (!isDiscovering && messages.length > 0) {
-      setTimeout(() => textareaRef.current?.focus(), 100);
+      setTimeout(() => textareaRef.current?.focus(), 100)
     }
-  }, [isDiscovering, messages.length]);
+  }, [isDiscovering, messages.length])
 
   // Update input height for dynamic padding
   useEffect(() => {
     if (inputRef.current) {
-      setInputHeight(inputRef.current.offsetHeight);
+      setInputHeight(inputRef.current.offsetHeight)
     }
-  }, [prompt, isDiscovering]);
+  }, [prompt, isDiscovering])
 
   const askQuestion = async (question: string): Promise<string> => {
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: question }],
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: question,
+          sessionId: `session-${Date.now()}`,
+          meta: { channel: 'web' }
         }),
-      });
+      })
 
-      if (!response.ok) throw new Error("Failed to get response");
-      const data = await response.json();
-      return data.response || "I'm sorry, I couldn't process that request.";
+      if (!response.ok) throw new Error('Failed to get response')
+      const data = await response.json()
+      return data.text || data.answer || "I'm sorry, I couldn't process that request."
     } catch (error) {
-      console.error("Error asking question:", error);
-      return "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a moment.";
+      console.error('Error asking question:', error)
+      return "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a moment."
     }
-  };
+  }
 
   const handleSubmit = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim()) return
 
     const userMessage: Message = {
       id: messageIdCounter,
       type: "user",
       content: prompt,
       timestamp: new Date(),
-    };
+    }
 
-    setMessages((prev) => [...prev, userMessage]);
-    const currentMessageId = messageIdCounter;
-    setMessageIdCounter((prev) => prev + 1);
-    setIsDiscovering(true);
+    setMessages(prev => [...prev, userMessage])
+    const currentMessageId = messageIdCounter
+    setMessageIdCounter(prev => prev + 1)
+    setIsDiscovering(true)
 
-    const currentPrompt = prompt;
-    setPrompt("");
+    const currentPrompt = prompt
+    setPrompt("")
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const response = await askQuestion(currentPrompt);
-      setIsDiscovering(false);
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      const response = await askQuestion(currentPrompt)
+      setIsDiscovering(false)
 
       const aiMessage: Message = {
         id: currentMessageId + 1,
         type: "ai",
         content: response,
         timestamp: new Date(),
-      };
+      }
 
-      setMessages((prev) => [...prev, aiMessage]);
-      setMessageIdCounter((prev) => prev + 1);
+      setMessages(prev => [...prev, aiMessage])
+      setMessageIdCounter(prev => prev + 1)
     } catch (error) {
-      setIsDiscovering(false);
+      setIsDiscovering(false)
       const errorMessage: Message = {
         id: currentMessageId + 1,
         type: "ai",
-        content:
-          "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a moment.",
+        content: "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a moment.",
         timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      setMessageIdCounter((prev) => prev + 1);
+      }
+      setMessages(prev => [...prev, errorMessage])
+      setMessageIdCounter(prev => prev + 1)
     }
-  };
+  }
 
   const resetChat = () => {
-    setMessages([]);
-    setIsDiscovering(false);
-    setMessageIdCounter(1);
-  };
+    setMessages([])
+    setIsDiscovering(false)
+    setMessageIdCounter(1)
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !isDiscovering) {
-      e.preventDefault();
-      handleSubmit();
+      e.preventDefault()
+      handleSubmit()
     }
-  };
+  }
 
-  const currentColor = COLORS[colorIndex];
+  const currentColor = COLORS[colorIndex]
 
   // Dark mode conditional classes
   const darkModeClasses = {
-    bg: isDarkMode ? "bg-black" : "bg-background",
-    text: isDarkMode ? "text-white" : "text-black",
-    textSecondary: isDarkMode ? "text-gray-400" : "text-gray-500",
-    border: isDarkMode ? "border-white/10" : "border-black/5",
-    headerBg:
-      isDarkMode ? "bg-black/80 border-white/10" : "bg-white/80 border-black/5",
-    sidebarBg: isDarkMode
+    bg: isDarkMode ? 'bg-black' : 'bg-background',
+    text: isDarkMode ? 'text-white' : 'text-black',
+    textSecondary: isDarkMode ? 'text-gray-400' : 'text-gray-500',
+    border: isDarkMode ? 'border-white/10' : 'border-black/5',
+    headerBg: isDarkMode ? 'bg-black/80 border-white/10' : 'bg-white/80 border-black/5',
+    sidebarBg: isDarkMode 
       ? "linear-gradient(to bottom, #1f2937, #111827)"
       : "linear-gradient(to bottom, #f9fafb, #e5e7eb)",
-    inputBg: isDarkMode
-      ? "bg-white/5 border-white/10 focus:border-white/20 placeholder:text-gray-500 text-white"
-      : "bg-white border-blue-100 focus:border-blue-200 placeholder:text-gray-500 text-black",
-    buttonHover: isDarkMode ? "text-gray-400 hover:text-white" : "text-gray-400 hover:text-black",
-    sendButton: isDarkMode
-      ? "bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:text-gray-600 text-white"
-      : "bg-white hover:bg-gray-100 disabled:bg-white/10 disabled:text-gray-600 text-black",
-    userBubble: isDarkMode
-      ? "text-white bg-gray-400/30 border-gray-500/30"
-      : "text-black bg-blue-100 border-blue-200",
-    gradientBg: isDarkMode
-      ? "bg-gradient-to-t from-black via-black/90 to-transparent"
-      : "bg-gradient-to-t from-white via-white/90 to-transparent",
-  };
+    inputBg: isDarkMode 
+      ? 'bg-white/5 border-white/10 focus:border-white/20 placeholder:text-gray-500 text-white'
+      : 'bg-white border-blue-100 focus:border-blue-200 placeholder:text-gray-500 text-black',
+    buttonHover: isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-black',
+    sendButton: isDarkMode 
+      ? 'bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:text-gray-600 text-white'
+      : 'bg-white hover:bg-gray-100 disabled:bg-white/10 disabled:text-gray-600 text-black',
+    userBubble: isDarkMode 
+      ? 'text-white bg-gray-400/30 border-gray-500/30'
+      : 'text-black bg-blue-100 border-blue-200',
+    gradientBg: isDarkMode 
+      ? 'bg-gradient-to-t from-black via-black/90 to-transparent'
+      : 'bg-gradient-to-t from-white via-white/90 to-transparent',
+  }
 
   return (
-    <div className={`min-h-screen ${darkModeClasses.bg} ${darkModeClasses.text}`}>
-      {/* Header */}
-      <div className={`flex items-center justify-between p-4 border-b ${darkModeClasses.border}`}>
-        <div className="flex items-center space-x-2">
-          <h1 className="text-2xl font-bold">DiscoBuddy</h1>
-          <span className="text-sm rounded-full px-3 py-1" style={{ backgroundColor: currentColor.text }}>
-            Beta
-          </span>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" size="icon" onClick={resetChat}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <Button variant="outline" size="icon" onClick={() => setIsDarkMode((prev) => !prev)}>
-            <Moon className="w-5 h-5" />
-          </Button>
-        </div>
-      </div>
+    <div className={`min-h-screen relative overflow-y-auto ${darkModeClasses.bg}`}>
+      {/* Sidebar */}
+      <div
+        className={`fixed top-0 left-0 h-full w-80 z-40 transform transition-transform duration-300 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{ background: darkModeClasses.sidebarBg }}
+      >
+        <div className="p-6 pt-16">
+          <div className="flex items-center justify-end mb-4 h-8 pt-8">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarOpen(false)}
+              className={`p-1 flex items-center justify-center h-8 ${darkModeClasses.buttonHover}`}
+            >
+              <ArrowLeft
+                className="w-5 h-5 transition-all duration-3000 ease-in-out"
+                style={{
+                  color: currentColor.text,
+                  filter: `drop-shadow(0 0 8px ${currentColor.glow})`,
+                }}
+              />
+            </Button>
+          </div>
 
-      {/* Chat history (sidebar) */}
-      <div className={`fixed inset-y-0 left-0 w-80 p-4 overflow-y-auto border-r ${darkModeClasses.border} ${sidebarOpen ? 'block' : 'hidden'}`}>
-        <h2 className="text-lg font-semibold mb-4">Chat History</h2>
-        {messages.length === 0 ? (
-          <p className="text-center text-gray-500 py-4">No chat history</p>
-        ) : (
-          <div className="space-y-2">
-            {messages.map((message) => (
-              <div key={message.id} className={`p-3 rounded-lg ${message.type === 'user' ? darkModeClasses.userBubble : 'bg-gray-100'} border`}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs ${darkModeClasses.textSecondary}`}>
-                    {message.type === 'user' ? 'You' : 'DiscoBuddy'} • {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(message.timestamp))}
-                  </span>
+          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto light-blue-scrollbar">
+            {SAMPLE_CHAT_HISTORY.map((chat, index) => (
+              <div key={chat.id}>
+                <div className={`p-4 cursor-pointer transition-colors ${
+                  isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-blue-50'
+                }`}>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-light truncate ${darkModeClasses.text}`}>{chat.title}</p>
+                    <p className={`text-xs mt-1 ${darkModeClasses.textSecondary}`}>{chat.time}</p>
+                  </div>
                 </div>
-                <p className={`text-sm ${darkModeClasses.text}`}>{message.content}</p>
+                {index < SAMPLE_CHAT_HISTORY.length - 1 && (
+                  <div className={`h-px mx-4 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-700/50'}`} />
+                )}
               </div>
             ))}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Sidebar overlay */}
+      {sidebarOpen && (
+        <div 
+          className={`fixed inset-0 z-30 ${isDarkMode ? 'bg-black/50' : 'bg-black/10'}`} 
+          onClick={() => setSidebarOpen(false)} 
+        />
+      )}
+
+      {/* Header */}
+      <header className={`fixed top-0 left-0 right-0 z-50 p-3 backdrop-blur-sm border-b ${darkModeClasses.headerBg}`}>
+        <div className="w-full flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 focus:outline-none"
+              aria-label="Open sidebar"
+            >
+              <img src="/discovery-logo-black.svg" alt="Discovery Logo" className="w-10 h-10" />
+            </button>
+            <div className="flex items-center gap-1 cursor-pointer" onClick={resetChat}>
+              <div className="flex items-center text-lg font-light tracking-wider">
+                <span className={darkModeClasses.text}>DISC</span>
+                <span
+                  className="transition-all duration-3000 ease-in-out"
+                  style={{
+                    color: currentColor.text,
+                    textShadow: `0 0 20px ${currentColor.glow}, 0 0 40px ${currentColor.glow}`,
+                  }}
+                >
+                  O
+                </span>
+                <span className={darkModeClasses.text}>BUDDY</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className={`p-2 transition-colors ${darkModeClasses.buttonHover}`}
+            >
+              <Moon className="w-4 h-4" />
+            </Button>
+            <User className={`w-4 h-4 ${darkModeClasses.text}`} />
+            <span className={`text-sm font-light ${darkModeClasses.text}`}>Gerald</span>
+          </div>
+        </div>
+      </header>
 
       {/* Main content */}
-      <div className={`flex-1 p-4 md:ml-80 transition-all duration-300 ${darkModeClasses.gradientBg}`}>
-        {/* Message list */}
-        <div className="space-y-4 mb-4">
-          {messages.map((message) => (
-            <div key={message.id} className={`p-3 rounded-lg ${message.type === 'user' ? darkModeClasses.userBubble : 'bg-gray-100'} border`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-xs ${darkModeClasses.textSecondary}`}>
-                  {message.type === 'user' ? 'You' : 'DiscoBuddy'} • {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(new Date(message.timestamp))}
-                </span>
+      <main className="min-h-screen px-8">
+        {messages.length === 0 && !isDiscovering ? (
+          // Landing page
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="max-w-3xl mx-auto text-center space-y-12">
+              <div className="space-y-6">
+                <h1 className="text-6xl md:text-7xl font-light leading-tight">
+                  <span className={darkModeClasses.text}>Hi, I'm</span>
+                  <br />
+                  <span className="bg-gradient-to-r from-pink-400 to-purple-500 bg-clip-text text-transparent">
+                    DiscoBuddy.
+                  </span>
+                  <span className="inline-block animate-wave origin-bottom-left align-baseline ml-1">
+                    👋
+                  </span>
+                </h1>
+                <div className="w-12 h-px bg-white/30 mx-auto" />
+                <p className={`text-xl font-light ${darkModeClasses.text}`}>
+                  Your AI companion ready to help with any Discovery question.
+                </p>
               </div>
-              <p className={`text-sm ${darkModeClasses.text}`}>{message.content}</p>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
 
-        {/* Input area */}
-        <div ref={inputRef} className={`flex items-center p-4 rounded-lg border ${darkModeClasses.border} ${darkModeClasses.inputBg}`}>
-          <Textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
-            className={`flex-1 resize-none border-0 focus:ring-0 ${darkModeClasses.text} ${darkModeClasses.placeholder}`}
-            style={{ minHeight: `${inputHeight}px` }}
-          />
-          <Button
-            onClick={handleSubmit}
-            disabled={isDiscovering}
-            className={`ml-2 rounded-full p-2 transition-all duration-300 flex items-center justify-center ${darkModeClasses.sendButton}`}
-          >
-            {isDiscovering ? (
-              <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4zm16 0a8 8 0 01-8 8v-4a4 4 0 004-4h4z"></path>
-              </svg>
-            ) : (
-              <ArrowUp className="w-5 h-5" />
-            )}
-          </Button>
-        </div>
-      </div>
+              <div className="max-w-2xl mx-auto">
+                <div className="relative">
+                  <Textarea
+                    placeholder="What would you like to know?"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className={`w-full h-16 px-6 py-4 pr-16 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none transition-all duration-3000 ease-in-out font-light backdrop-blur-sm ${darkModeClasses.inputBg}`}
+                    style={{
+                      boxShadow: `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`,
+                      paddingTop: '1.5rem',
+                      paddingBottom: '0.5rem',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.target as HTMLTextAreaElement).style.boxShadow = `0 0 0 1px rgba(255,255,255,0.2), 0 0 30px ${currentColor.glow}`
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.target as HTMLTextAreaElement).style.boxShadow = `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`
+                    }}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`absolute right-16 top-1/2 transform -translate-y-1/2 w-8 h-8 p-0 transition-colors ${darkModeClasses.buttonHover}`}
+                  >
+                    <Mic className="w-4 h-4" />
+                  </Button>
+                  {prompt.trim() && (
+                    <Button
+                      size="sm"
+                      onClick={handleSubmit}
+                      className={`absolute top-1/2 right-3 -translate-y-1/2 w-10 h-10 p-0 rounded-xl transition-all duration-300 ${darkModeClasses.sendButton}`}
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 justify-center">
+                {EXAMPLE_QUESTIONS.map((example) => (
+                  <Button
+                    key={example}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPrompt(example)}
+                    className={`rounded-full px-4 py-2 text-sm font-light transition-all duration-300 ${
+                      isDarkMode 
+                        ? 'text-gray-500 hover:text-white hover:bg-white/5 border border-white/10 hover:border-white/20' 
+                        : 'text-black hover:text-black hover:bg-blue-100 border border-blue-100 hover:border-blue-300'
+                    }`}
+                  >
+                    {example}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Chat interface
+          <div className="min-h-screen flex flex-col">
+            <div className="flex-1 pt-20">
+              <div className="max-w-3xl mx-auto w-full space-y-8 max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-hide pt-8">
+                {messages.map((message) => (
+                  <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
+                    {message.type === "user" ? (
+                      <div className={`max-w-[85vw] sm:max-w-xl rounded-2xl px-6 py-2 backdrop-blur-sm border text-sm font-light leading-relaxed break-words whitespace-pre-line ${darkModeClasses.userBubble}`}>
+                        <p>{message.content}</p>
+                      </div>
+                    ) : (
+                      <div className={`max-w-[85vw] sm:max-w-4xl text-sm font-light leading-relaxed break-words whitespace-pre-line ${darkModeClasses.text}`}>
+                        <p>{message.content}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isDiscovering && (
+                  <div className="flex justify-start">
+                    <div className="px-6">
+                      <p
+                        className="text-xs font-light transition-all duration-3000 ease-in-out"
+                        style={{
+                          color: currentColor.text,
+                          textShadow: `0 0 8px ${currentColor.glow}`,
+                        }}
+                      >
+                        Discovering...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            {/* Fixed input at bottom */}
+            <div ref={inputRef} className={`fixed bottom-20 left-0 right-0 px-8 pb-8 pt-2 ${darkModeClasses.gradientBg}`}>
+              <div className="max-w-3xl mx-auto">
+                <div className="relative">
+                  <Textarea
+                    ref={textareaRef}
+                    placeholder="Ask me anything"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className={`w-full h-16 px-16 py-4 text-sm border rounded-2xl resize-none focus:ring-0 focus:outline-none font-light backdrop-blur-sm transition-all duration-3000 ease-in-out ${darkModeClasses.inputBg}`}
+                    style={{
+                      boxShadow: `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`,
+                      paddingTop: '1.5rem',
+                      paddingBottom: '0.5rem',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.target as HTMLTextAreaElement).style.boxShadow = `0 0 0 1px rgba(255,255,255,0.2), 0 0 30px ${currentColor.glow}`
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.target as HTMLTextAreaElement).style.boxShadow = `0 0 0 1px rgba(255,255,255,0.1), 0 0 20px ${currentColor.glow}`
+                    }}
+                    onKeyDown={handleKeyDown}
+                  />
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-8 h-8 p-0 transition-colors ${darkModeClasses.buttonHover}`}
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`absolute right-16 top-1/2 transform -translate-y-1/2 w-8 h-8 p-0 transition-colors ${darkModeClasses.buttonHover}`}
+                  >
+                    <Mic className="w-4 h-4" />
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    disabled={!prompt.trim() || isDiscovering}
+                    onClick={handleSubmit}
+                    className={`absolute top-1/2 right-3 -translate-y-1/2 w-10 h-10 p-0 rounded-xl transition-all duration-300 ${darkModeClasses.sendButton}`}
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer - only on landing page */}
+      {messages.length === 0 && !isDiscovering && (
+        <footer className="absolute bottom-0 left-0 right-0 p-8">
+          <div className="max-w-6xl mx-auto text-center">
+            <p className={`text-xs font-light ${darkModeClasses.textSecondary}`}>
+              Copyright &copy; 2025 Discovery. All rights reserved. 
+              <a href="#" className={`underline mx-1 ${isDarkMode ? 'hover:text-blue-400' : 'hover:text-blue-600'}`}>Privacy Policy</a> |
+              <a href="#" className={`underline mx-1 ${isDarkMode ? 'hover:text-blue-400' : 'hover:text-blue-600'}`}>Terms of Use</a>
+            </p>
+          </div>
+        </footer>
+      )}
+
+
     </div>
-  );
+  )
 }
