@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowUp, User, ArrowLeft, Mic, Paperclip, Moon } from "lucide-react"
-//import { ChatTest } from "@/components/chat-test"
+import MarkdownMessage from "@/components/MarkdownMessage"
 interface Message {
   id: number
   type: "user" | "ai"
@@ -27,8 +27,6 @@ const COLORS = [
   { glow: "rgba(99, 102, 241, 0.6)", text: "rgb(99, 102, 241)" },
 ]
 
-
-
 const EXAMPLE_QUESTIONS = [
   "Tell me about Discovery's KeyCare plans",
   "How do I join Vitality?",
@@ -45,6 +43,7 @@ export default function DiscoBuddyLanding() {
   const [colorIndex, setColorIndex] = useState(0)
   const [messageIdCounter, setMessageIdCounter] = useState(1)
   const [inputHeight, setInputHeight] = useState(0)
+  const [isNewUser, setIsNewUser] = useState(false)
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -266,8 +265,17 @@ export default function DiscoBuddyLanding() {
             >
               <Moon className="w-4 h-4" />
             </Button>
-            <User className={`w-4 h-4 ${darkModeClasses.text}`} />
-            <span className={`text-sm font-light ${darkModeClasses.text}`}>Gerald</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsNewUser(!isNewUser)}
+              className={`p-2 transition-colors ${darkModeClasses.buttonHover} flex items-center gap-2`}
+            >
+              <User className="w-4 h-4" />
+              <span className={`text-sm font-light ${darkModeClasses.text}`}>
+                {isNewUser ? "Join Discovery" : "Gerald"}
+              </span>
+            </Button>
           </div>
         </div>
       </header>
@@ -365,9 +373,11 @@ export default function DiscoBuddyLanding() {
                         <p>{message.content}</p>
                       </div>
                     ) : (
-                      <div className={`max-w-[85vw] sm:max-w-4xl text-sm font-light leading-relaxed break-words whitespace-pre-line ${darkModeClasses.text}`}>
-                        <p>{message.content}</p>
-                      </div>
+                      <MarkdownMessage
+                        content={message.content}
+                        isDarkMode={isDarkMode}
+                        currentColor={currentColor}
+                      />
                     )}
                   </div>
                 ))}

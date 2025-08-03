@@ -1,89 +1,99 @@
-import { NextResponse } from 'next/server';
-import { searchKb } from '@/lib/search';
-import { getUserProfile, getProfileContextForQuestion } from '@/lib/user-profile';
-import { chatCompletion, ChatMessage } from '@/lib/azureOpenAI';
-import { isOutOfScope } from '@/lib/guardrails';
-import { logTelemetry } from '@/lib/telemetry';
+import { NextRequest, NextResponse } from 'next/server';
+import { OpenAIClient, AzureKeyCredential } from "@azure/openai";
 
-export async function POST(req: Request) {
-  const startTime = Date.now();
-  
+export async function POST(request: NextRequest) {
   try {
-    const { messages } = await req.json();
-    const userMessage = messages[messages.length - 1].content;
+    const { messages } = await request.json();
 
-    // Check if question is within Discovery scope
-    if (isOutOfScope(userMessage)) {
-      return NextResponse.json({
-        response: "I can only help with Discovery-related questions. Please ask about Discovery's products, services, or benefits.",
-        refused: true
-      });
+    // Get environment variables
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+    const deploymentId = process.env.AZURE_OPENAI_DEPLOYMENT_ID;
+    const searchEndpoint = process.env.AZURE_AI_SEARCH_ENDPOINT;
+    const searchKey = process.env.AZURE_AI_SEARCH_API_KEY;
+    const searchIndex = process.env.AZURE_AI_SEARCH_INDEX;
+
+    if (!endpoint || !azureApiKey || !deploymentId || !searchEndpoint || !searchKey || !searchIndex) {
+      return NextResponse.json(
+        { error: "Missing required environment variables" },
+        { status: 500 }
+      );
     }
 
-    // Get user profile and relevant context
-    const profile = await getUserProfile('gerald'); // In production, get from auth
-    const profileContext = getProfileContextForQuestion(profile, userMessage);
+    const client = new OpenAIClient(endpoint, new AzureKeyCredential(azureApiKey));
 
-    // Search knowledge base
-    const searchResults = await searchKb(userMessage);
-    const kbContext = searchResults.hits.map(hit => hit.content).join('\n\n');
+    // Prepare messages with system prompt
+    const systemMessage = {
+      role: "system" as const,
+      content: `You are Discovery's AI assistant. You have access to Discovery's comprehensive knowledge base and user data. 
 
-    // Build system prompt
-    const systemPrompt = `You are DiscoBuddy, Discovery's AI assistant.
+IMPORTANT INSTRUCTIONS:
+1. Always format answers in GitHub-flavored Markdown (GFM). Use headings (###), bold (**text**), lists, and tables when helpful
+2. Always provide detailed, comprehensive answers based on the retrieved documents
+3. Include specific numbers, percentages, and exact details when available
+4. Structure your responses clearly with bullet points, tables, and sections
+5. Reference specific document citations when possible
+6. If information is not found in the documents, clearly state this
+7. Be thorough and professional in your responses
 
-Use only Discovery knowledge provided in "KB Context" to answer.
-If—and only if—the user's question naturally relates to a benefit that this user can activate or improve (based on the "User Context"), add a short "Personalised tip" after the answer.
+USER CONTEXT (Gerald Sadya):
+- Name: Gerald Sadya, Age: 25
+- Monthly Salary: R40,000, Discretionary Income: R2,000
+- Account: Black Suite Transaction Account (Bundled Fees)
+- Account Balance: R150,000
+- Vitality Status: Silver (12,500 points)
+- Discovery Miles: 1,000
+- Medical Aid: Classic Priority
+- Insurance: No Life/Car/Home Insurance
+- Gym: Virgin Active
 
-Rules:
-- First: answer factually from the KB.
-- Personalise only when it clearly helps with THIS topic (e.g., groceries ↔ HealthyFood; gyms ↔ Vitality Gym).
-- Use profile numbers for estimates (preface with "about" or "up to").
-- Do NOT invent Discovery policies or student discounts.
-- If required details are missing (KB facts or profile data), skip the tip.
-- If the KB doesn't mention a fact, do not infer it.
+When answering questions:
+- Use Gerald's account details to personalize responses
+- Search through Discovery documents for comprehensive information
+- Provide detailed breakdowns of benefits, fees, rates, and rewards
+- Include step-by-step explanations when relevant`
+    };
 
-User Context (summarised): ${profileContext}
+    const chatMessages = [systemMessage, ...messages];
 
-You will receive "KB Context" in the user message.`;
-
-    // Format user message with KB context
-    const formattedUserMessage = `Question: ${userMessage}
-
-KB Context:
-${kbContext}`;
-
-    // Create messages array with just system prompt and current user message
-    const chatMessages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: formattedUserMessage }
-    ];
-
-    // Generate response
-    const completion = await chatCompletion(chatMessages);
-
-    // Log telemetry
-    logTelemetry({
-      timestamp: new Date().toISOString(),
-      sessionId: 'demo', // In production, use real session ID
-      question: userMessage,
-      kb_confidence: searchResults.hits[0]?.score || 0,
-      tip_appended: completion.text.includes('Personalised tip:'),
-      response_time_ms: Date.now() - startTime,
-      profile_context_used: profileContext
+    // Get response with Azure Cognitive Search integration (RAG)
+    const events = await client.streamChatCompletions(deploymentId, chatMessages, {
+      pastMessages: 10,
+      maxTokens: 13107,
+      temperature: 0.7,
+      topP: 1.0,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      azureExtensionOptions: {
+        extensions: [
+          {
+            type: "AzureCognitiveSearch",
+            parameters: {
+              endpoint: searchEndpoint,
+              key: searchKey,
+              indexName: searchIndex,
+            },
+          },
+        ],
+      },
     });
 
-    return NextResponse.json({
-      response: completion.text,
-      citations: searchResults.hits.map(hit => ({
-        filename: hit.filename,
-        score: hit.score
-      }))
-    });
+    let response = "";
+    for await (const event of events) {
+      for (const choice of event.choices) {
+        const newText = choice.delta?.content;
+        if (!!newText) {
+          response += newText;
+        }
+      }
+    }
+
+    return NextResponse.json({ response });
 
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error('Error in chat API:', error);
     return NextResponse.json(
-      { error: 'Failed to process chat request' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
